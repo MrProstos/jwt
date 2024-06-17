@@ -10,6 +10,10 @@ import (
 	"strings"
 )
 
+/**
+TODO продумать как вынести secret из глобальной переменной в структуру и при этом сохранить дженерики для Token
+*/
+
 const separator = "."
 
 type Token[T any] struct {
@@ -21,7 +25,7 @@ type Token[T any] struct {
 	Payload T
 }
 
-func NewJwt[T any](payload T) *Token[T] {
+func NewJwt[T any]() *Token[T] {
 	return &Token[T]{
 		Header: struct {
 			Alg string `json:"alg"`
@@ -30,8 +34,12 @@ func NewJwt[T any](payload T) *Token[T] {
 			Alg: "hs256",
 			Typ: "JwtToken",
 		},
-		Payload: payload,
 	}
+}
+
+func (t *Token[T]) SetPayload(payload T) *Token[T] {
+	t.Payload = payload
+	return t
 }
 
 func (t *Token[T]) Encode() string {
@@ -39,24 +47,24 @@ func (t *Token[T]) Encode() string {
 	return fmt.Sprintf("%v.%v.%v", rawHeader, rawPayload, t.createSignature(rawHeader, rawPayload))
 }
 
-func (t *Token[T]) Decode(tokenStr string) error {
+func (t *Token[T]) Decode(tokenStr string) (*Token[T], error) {
 	tokenArr := strings.Split(tokenStr, separator)
 	headerStr, payloadStr, signature := tokenArr[0], tokenArr[1], tokenArr[2]
 
 	if signature != t.createSignature(headerStr, payloadStr) {
-		return errors.New("invalid token")
+		return nil, errors.New("invalid token")
 	}
 
 	decodePayload, err := base64.RawURLEncoding.DecodeString(payloadStr)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if err = json.Unmarshal(decodePayload, &t.Payload); err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return t, nil
 }
 
 func (t *Token[T]) rawURLEncoding(object any) string {

@@ -27,10 +27,9 @@ func TestJwt(t *testing.T) {
 		},
 	}
 
-	token := NewJwt(expected.Payload).Encode()
-
-	actual := &Token[TestPayload]{}
-	if err := NewJwt(actual).Decode(token); err != nil {
+	token := NewJwt[TestPayload]().SetPayload(expected.Payload).Encode()
+	actual, err := NewJwt[TestPayload]().Decode(token)
+	if err != nil {
 		t.Error(err)
 	}
 
