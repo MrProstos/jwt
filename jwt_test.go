@@ -13,22 +13,13 @@ type TestPayload struct {
 func TestJwt(t *testing.T) {
 	SetSecretKey([]byte("secret"))
 
-	expected := &Token[TestPayload]{
-		Header: struct {
-			Alg string `json:"alg"`
-			Typ string `json:"typ"`
-		}{
-			Alg: "hs256",
-			Typ: "JwtToken",
-		},
-		Payload: TestPayload{
-			Id:    1,
-			Email: "tests@tests.com",
-		},
+	expected := NewJwt(TestPayload{Id: 1, Email: "tests@tests.com"})
+	token, err := Encode(expected)
+	if err != nil {
+		t.Error(err)
 	}
 
-	token := NewJwt[TestPayload]().SetPayload(expected.Payload).Encode()
-	actual, err := NewJwt[TestPayload]().Decode(token)
+	actual, err := Decode[TestPayload](token)
 	if err != nil {
 		t.Error(err)
 	}

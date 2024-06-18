@@ -10,10 +10,6 @@ import (
 	"strings"
 )
 
-/**
-TODO продумать как вынести secret из глобальной переменной в структуру и при этом сохранить дженерики для Token
-*/
-
 const separator = "."
 
 type Token[T any] struct {
@@ -25,7 +21,7 @@ type Token[T any] struct {
 	Payload T
 }
 
-func NewJwt[T any]() *Token[T] {
+func NewJwt[T any](payload T) *Token[T] {
 	return &Token[T]{
 		Header: struct {
 			Alg string `json:"alg"`
@@ -34,24 +30,29 @@ func NewJwt[T any]() *Token[T] {
 			Alg: "hs256",
 			Typ: "JwtToken",
 		},
+		Payload: payload,
 	}
 }
 
-func (t *Token[T]) SetPayload(payload T) *Token[T] {
-	t.Payload = payload
-	return t
+func Encode[T any](token *Token[T]) (string, error) {
+	rawHeader, err := encoding(token.Header)
+	if err != nil {
+		return "", err
+	}
+
+	rawPayload, err := encoding(token.Payload)
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("%v%s%v%s%v", rawHeader, separator, rawPayload, separator, signature(rawHeader, rawPayload)), nil
 }
 
-func (t *Token[T]) Encode() string {
-	rawHeader, rawPayload := t.rawURLEncoding(t.Header), t.rawURLEncoding(t.Payload)
-	return fmt.Sprintf("%v.%v.%v", rawHeader, rawPayload, t.createSignature(rawHeader, rawPayload))
-}
+func Decode[T any](token string) (*Token[T], error) {
+	tokenArr := strings.Split(token, separator)
+	headerStr, payloadStr, sing := tokenArr[0], tokenArr[1], tokenArr[2]
 
-func (t *Token[T]) Decode(tokenStr string) (*Token[T], error) {
-	tokenArr := strings.Split(tokenStr, separator)
-	headerStr, payloadStr, signature := tokenArr[0], tokenArr[1], tokenArr[2]
-
-	if signature != t.createSignature(headerStr, payloadStr) {
+	if sing != signature(headerStr, payloadStr) {
 		return nil, errors.New("invalid token")
 	}
 
@@ -60,19 +61,24 @@ func (t *Token[T]) Decode(tokenStr string) (*Token[T], error) {
 		return nil, err
 	}
 
-	if err = json.Unmarshal(decodePayload, &t.Payload); err != nil {
+	var payload T
+	if err = json.Unmarshal(decodePayload, &payload); err != nil {
 		return nil, err
 	}
 
-	return t, nil
+	return NewJwt(payload), nil
 }
 
-func (t *Token[T]) rawURLEncoding(object any) string {
-	raw, _ := json.Marshal(object)
-	return base64.RawURLEncoding.EncodeToString(raw)
+func encoding(object any) (string, error) {
+	raw, err := json.Marshal(object)
+	if err != nil {
+		return "", err
+	}
+
+	return base64.RawURLEncoding.EncodeToString(raw), nil
 }
 
-func (t *Token[T]) createSignature(header string, payload string) string {
+func signature(header string, payload string) string {
 	h := hmac.New(sha256.New, secretKey)
 	h.Write([]byte(fmt.Sprintf("%s%s%s", header, separator, payload)))
 	return base64.RawURLEncoding.EncodeToString(h.Sum(nil))
